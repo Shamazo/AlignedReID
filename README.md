@@ -1,3 +1,10 @@
+
+
+#Forked from [here](https://github.com/michuanhaohao/AlignedReID)
+Changes from upstream repo:
+1. Added nuscenesreid dataset.
+2. moved from scipy imread to imageio.
+
 # AlignedReID++ (Pattern Recognition)
 Alignedreid++: Dynamically Matching Local Information for Person Re-Identification.
 [[PDF]](https://www.sciencedirect.com/science/article/pii/S0031320319302031?via%3Dihub#!)

@@ -10,12 +10,165 @@ import os.path as osp
 from scipy.io import loadmat
 import numpy as np
 import h5py
-from scipy.misc import imsave
-
+#from scipy.misc import imsave
+import imageio
+import pandas as pd
 from util.utils import mkdir_if_missing, write_json, read_json
 
 """Image ReID"""
 
+
+
+class NuscenesReID(object):
+    """NuscenesReID.
+    Crops of images from the Nuscenes dataset using the pedestrian tacks
+
+    URL: `<https://www.nuscenes.org/>`_
+
+    Dataset statistics:
+        - identities:
+        - images: x (train) + y (query) + z (gallery).
+        - cameras: w
+    """
+    dataset_dir = 'nuscenes'
+
+
+    def __init__(self, root='', train_lst="train_list.txt", query_lst="query_list.txt", gallery_lst="gallery_list.txt", **kwargs):
+        self.root = osp.abspath(osp.expanduser(root))
+        self.dataset_dir = osp.join(self.root, self.dataset_dir)
+        if not os.path.exists(self.dataset_dir):
+            os.mkdir(self.dataset_dir)
+        self.train_dir = osp.join(self.dataset_dir, "train")
+        self.test_dir = osp.join(self.dataset_dir, "test")
+        if not os.path.exists(self.train_dir):
+            os.mkdir(self.train_dir)
+        if not os.path.exists(self.test_dir):
+            os.mkdir(self.test_dir)
+
+        if 'nuscenes_root' not in kwargs.keys():
+            raise ValueError("Must pass path to nuscenes data root")
+        else:
+            self.nuscenes_root = kwargs['nuscenes_root']
+
+        train_df = pd.read_csv(osp.join(self.dataset_dir, "train.csv"))
+        test_df = pd.read_csv(osp.join(self.dataset_dir, "test.csv"))
+
+        # self.nusc = NuScenes(version='v1.0-trainval', dataroot=self.nuscenes_root, verbose=True)
+        self.sensors = ['CAM_FRONT',
+                        'CAM_BACK',
+                        'CAM_BACK_LEFT',
+                        'CAM_FRONT_LEFT',
+                        'CAM_FRONT_RIGHT',
+                        'CAM_BACK_RIGHT']
+        self.camids = dict()
+        self.pids = dict()
+        self.num_pids = 0
+        for idx, sensor in enumerate(self.sensors):
+            self.camids[sensor] = idx
+
+        train = self.process_train(self.train_dir, train_df)
+        query, gallery = self.process_test(self.test_dir, test_df)
+
+        train_pids = set()
+        for _, pid, _ in train:
+            train_pids.add(pid)
+        
+        query_pids = set()
+        for _, pid, _ in query:
+            query_pids.add(pid)
+        
+        gallery_pids = set()
+        for _, pid, _ in gallery:
+            gallery_pids.add(pid)
+            
+        self.train = train
+        self.query = query
+        self.gallery = gallery
+
+        self.num_train_pids = len(train_pids)
+        self.num_query_pids = len(query_pids)
+        self.num_gallery_pids = len(gallery_pids)
+
+    def process_train(self, dir_path, train_df):
+        data = []
+        # images exist and we just need to return paths or images do not exist and we need to crop them out of base data
+        if len(os.listdir(dir_path)) >= len(train_df):
+            for index, row in train_df.iterrows():
+                save_name = "{}_{}_{}.png".format(row['instance_token'], row['time_stamp'], row['sensor'])
+                save_path = osp.join(dir_path, save_name)
+                if row['instance_token'] in self.pids:
+                    pid = self.pids[row['instance_token']]
+                else:
+                    self.pids[row['instance_token']] = self.num_pids
+                    self.num_pids += 1
+                    pid = self.pids[row['instance_token']]
+                data.append((save_path, pid, self.camids[row['sensor']]))
+        else:
+            for index, row in train_df.iterrows():
+                im = imageio.imread(os.path.join(self.nuscenes_root, row['path']))
+                x1 = row['x1']
+                y1 = row['y1']
+                x2 = row['x2']
+                y2 = row['y2']
+                # print(x1,y1,x2,y2)
+                # print(type(x1))
+                # x1, y1, x2, y2 = row['bbox_corners']
+                im = im[y1:y2, x1:x2]
+                save_name = "{}_{}_{}.png".format(row['instance_token'], row['time_stamp'], row['sensor'])
+                save_path = save_path = osp.join(dir_path, save_name)
+                imageio.imwrite(save_path, im, "png")
+                if row['instance_token'] in self.pids:
+                    pid = self.pids[row['instance_token']]
+                else:
+                    self.pids[row['instance_token']] = self.num_pids
+                    self.num_pids += 1
+                    pid = self.pids[row['instance_token']]
+                data.append((save_path, pid, self.camids[row['sensor']]))
+        return data
+
+    def process_test(self, dir_path, test_df):
+        gallery = []
+        query = []
+
+        if len(os.listdir(dir_path)) >= len(test_df):
+            for index, row in test_df.iterrows():
+                save_name = "{}_{}_{}.png".format(row['instance_token'], row['time_stamp'], row['sensor'])
+                save_path = osp.join(dir_path, save_name)
+                if row['instance_token'] in self.pids:
+                    pid = self.pids[row['instance_token']]
+                else:
+                    self.pids[row['instance_token']] = self.num_pids
+                    self.num_pids += 1
+                    pid = self.pids[row['instance_token']]
+                if row['set'] == 'query':
+                    query.append((save_path, pid, self.camids[row['sensor']]))
+                else:
+                    gallery.append((save_path, pid, self.camids[row['sensor']]))
+
+        else:
+            for index, row in test_df.iterrows():
+                im = imageio.imread(os.path.join(self.nuscenes_root, row['path']))
+                x1 = row['x1']
+                y1 = row['y1']
+                x2 = row['x2']
+                y2 = row['y2']
+                im = im[y1:y2, x1:x2]
+                save_name = "{}_{}_{}.png".format(row['instance_token'], row['time_stamp'], row['sensor'])
+                save_path = save_path = osp.join(dir_path, save_name)
+                imageio.imwrite(save_path, im, "png")
+                if row['instance_token'] in self.pids:
+                    pid = self.pids[row['instance_token']]
+                else:
+                    self.pids[row['instance_token']] = self.num_pids
+                    self.num_pids += 1
+                    pid = self.pids[row['instance_token']]
+                if row['set'] == 'query':
+                    query.append((save_path, pid, self.camids[row['sensor']]))
+                else:
+                    gallery.append((save_path, pid, self.camids[row['sensor']]))
+        return query, gallery
+    
+    
 class Market1501(object):
     """
     Market1501
@@ -326,7 +479,7 @@ class CUHK03(object):
                 viewid = 1 if imgid < 5 else 2
                 img_name = '{:01d}_{:03d}_{:01d}_{:02d}.png'.format(campid+1, pid+1, viewid, imgid+1)
                 img_path = osp.join(save_dir, img_name)
-                imsave(img_path, img)
+                imageio.imwrite(img_path, img)
                 img_paths.append(img_path)
             return img_paths
 
@@ -1166,6 +1319,7 @@ __img_factory = {
     'cuhk03': CUHK03,
     'dukemtmcreid': DukeMTMCreID,
     'msmt17': MSMT17,
+    'nuscenesreid': NuscenesReID
 }
 
 __vid_factory = {

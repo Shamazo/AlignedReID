@@ -5,7 +5,7 @@ import datetime
 import argparse
 import os.path as osp
 import numpy as np
-
+import os
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
@@ -44,6 +44,9 @@ parser.add_argument('--cuhk03-classic-split', action='store_true',
                     help="whether to use classic split by Li et al. CVPR'14 (default: False)")
 parser.add_argument('--use-metric-cuhk03', action='store_true',
                     help="whether to use cuhk03-metric (default: False)")
+# nuscenes-specific setting
+parser.add_argument('--nuscenes-root', default='',
+                    help="path to nuscenes root directory")
 # Optimization options
 parser.add_argument('--labelsmooth', action='store_true', help="label smooth")
 parser.add_argument('--optim', type=str, default='adam', help="optimization algorithm (see optimizers.py)")
@@ -111,6 +114,7 @@ def main():
     dataset = data_manager.init_img_dataset(
         root=args.root, name=args.dataset, split_id=args.split_id,
         cuhk03_labeled=args.cuhk03_labeled, cuhk03_classic_split=args.cuhk03_classic_split,
+        nuscenes_root=args.nuscenes_root
     )
 
     # data augmentation
